@@ -8,18 +8,21 @@ import pandas as pd
 from dask.diagnostics import ProgressBar
 from dask.distributed import Client
 from hyperopt import STATUS_OK, Trials, fmin, hp, tpe
+from sklearn.ensemble import ExtraTreesRegressor, GradientBoostingRegressor
 from sklearn.model_selection import KFold, cross_val_score
+from sklearn.pipeline import make_pipeline
 from tpot import TPOTRegressor
+from tpot.builtins import StackingEstimator
 from tqdm import tqdm
 from xgboost import XGBRegressor
 
-from elo.processing import get_train_df
+from elo.processing import get_test_df, get_train_df
 
 SEED = 314
 MAX_EVALS = 1000
 CV = KFold(5, random_state=SEED)
-# TODO: Make these bigger later.
-TPOT_GENERATIONS = 10
+# TODO: Make these much bigger later.
+TPOT_GENERATIONS = 100
 TPOT_POPULATION_SIZE = 10
 
 
@@ -71,9 +74,10 @@ def tpot(use_dask):
     # TODO: Add some documentation...
     if use_dask:
         client = Client()
+        print(client)
     tpot_reg = TPOTRegressor(generations=TPOT_GENERATIONS, population_size=TPOT_POPULATION_SIZE,
                              random_state=SEED,  cv=CV, use_dask=use_dask,
-                             verbosity=2, memory="auto", warm_start=True, njobs=-1)
+                             verbosity=2, memory="auto")
     df = get_train_df("elo/data/merged_train.csv")
     print(df.head(1))
     # TODO: Drop these categorical for now, will transform them later.
@@ -87,7 +91,7 @@ def tpot(use_dask):
             .reset_index())
     # TODO: Find a better way to impute inf and missing values.
     df = df.replace([np.inf, -np.inf], np.nan)
-    df = df[~df.isna()]
+    df = df.fillna(df.median())
     print(df.shape)
     X = df.drop(["card_id", "target"], axis=1)
     y = df.loc[:, "target"]
@@ -97,8 +101,37 @@ def tpot(use_dask):
             tpot_reg.fit(X, y)
     else:
         tpot_reg.fit(X, y)
-    export_path = str(Path('elo/data/tpot.py').absolute())
+    export_path = str(Path('elo/data/tpot_more_generations.py').absolute())
     tpot_reg.export(export_path)
+
+
+def best_tpot_few_generations():
+    """ The output of the TPOT pipeline with 10 generations and 10 population size. """
+    model = make_pipeline(
+        StackingEstimator(estimator=GradientBoostingRegressor(alpha=0.8, learning_rate=0.01, loss="quantile", max_depth=2,
+                                                              max_features=0.9500000000000001, min_samples_leaf=20, min_samples_split=20, n_estimators=100, subsample=0.55)),
+        ExtraTreesRegressor(bootstrap=True, max_features=0.5, min_samples_leaf=17,
+                            min_samples_split=14, n_estimators=100)
+    )
+    df = get_train_df("elo/data/merged_train.csv")
+    print(df.head(1))
+    # TODO: Drop these categorical for now, will transform them later.
+    to_drop_cols = ["first_active_month", "authorized_flag", "category_1_transactions",
+                    "category_3", "merchant_id", "purchase_date", "category_1_merchants",
+                    "most_recent_sales_range", "most_recent_purchases_range", "category_4"]
+    # TODO: the "mean" aggregation isn't probably the best option for all the columns.
+    df = (df.drop(to_drop_cols, axis=1)
+            .groupby("card_id")
+            .mean()
+            .reset_index())
+    # TODO: Find a better way to impute inf and missing values.
+    df = df.replace([np.inf, -np.inf], np.nan)
+    df = df.fillna(df.median())
+    print(df.shape)
+    X = df.drop(["card_id", "target"], axis=1)
+    y = df.loc[:, "target"]
+    model.fit(X, y)
+    return model
 
 
 def hyperopt_xgboost():
@@ -122,14 +155,25 @@ def lightGBM():
 
 
 def make_submission(model, model_name):
-    df = pd.read_csv('data/test.csv')
-    X = df.loc[:, ["feature_1", "feature_2", "feature_3"]]
+    df = get_test_df("elo/data/merged_test.csv")
+    to_drop_cols = ["first_active_month", "authorized_flag", "category_1_transactions",
+                    "category_3", "merchant_id", "purchase_date", "category_1_merchants",
+                    "most_recent_sales_range", "most_recent_purchases_range", "category_4"]
+    # TODO: the "mean" aggregation isn't probably the best option for all the columns.
+    df = (df.drop(to_drop_cols, axis=1)
+            .groupby("card_id")
+            .mean()
+            .reset_index())
+    # TODO: Find a better way to impute inf and missing values.
+    df = df.replace([np.inf, -np.inf], np.nan)
+    df = df.fillna(df.median())
+    print(df.shape)
+    X = df.drop(["card_id"], axis=1)
     df["target"] = model.predict(X)
     (df.loc[:, ["card_id", "target"]]
        .to_csv(model_name + "_submission.csv", index=False))
 
 
 if __name__ == "__main__":
-    # model = hyperopt_xgboost()
-    # make_submission(model, "simple_hyperopt_xgboost")
-    tpot(use_dask=True)
+    model = best_tpot_few_generations()
+    make_submission(model, "tpot_few_generations")
