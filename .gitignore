@@ -2,3 +2,6 @@ data
 *.csv
 *.html
 *.ipynb_checkpoints
+*.egg-info
+dask-worker-space
+__pycache__

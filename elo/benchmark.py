@@ -5,6 +5,7 @@
 import pandas as pd
 from sklearn.linear_model import LinearRegression, RidgeCV
 from sklearn.model_selection import KFold, cross_val_score
+from xgboost import XGBRegressor
 
 # TODO: Move to a conf file.
 CV = KFold(5, random_state=314)
@@ -22,6 +23,7 @@ def linear_benchmark():
     lr.fit(X, y)
     return lr
 
+
 def ridge_linear_benchmark():
     df = pd.read_csv('data/train.csv')
     X = df.loc[:, ["feature_1", "feature_2", "feature_3"]]
@@ -37,6 +39,18 @@ def ridge_linear_benchmark():
     return model
 
 
+def simple_xgboost():
+    df = pd.read_csv('data/train.csv')
+    X = df.loc[:, ["feature_1", "feature_2", "feature_3"]]
+    y = df.loc[:, ["target"]]
+    model = XGBRegressor()
+    neg_mse_cv = cross_val_score(model, X=X, y=y, cv=CV, scoring="neg_mean_squared_error")
+    rmse_cv = (-1 * neg_mse_cv) ** 0.5
+    print(rmse_cv)
+    # Should be: [ 3.83417966  3.83095803  3.82135517  3.83964462  3.91841192]
+    model.fit(X, y)
+    return model
+
 
 def make_benchmark_submission(model, model_name):
     df = pd.read_csv('data/test.csv')
@@ -47,5 +61,5 @@ def make_benchmark_submission(model, model_name):
 
 
 if __name__ == "__main__":
-    model = ridge_linear_benchmark()
-    make_benchmark_submission(model, "ridge_cv")
+    model = simple_xgboost()
+    make_benchmark_submission(model, "simple_xgboost")
