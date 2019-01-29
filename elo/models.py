@@ -70,7 +70,7 @@ class HPOptimizer(object):
         return best
 
 
-def tpot(use_dask):
+def tpot(use_dask=True):
     # TODO: Add some documentation...
     if use_dask:
         client = Client()
@@ -78,21 +78,11 @@ def tpot(use_dask):
     tpot_reg = TPOTRegressor(generations=TPOT_GENERATIONS, population_size=TPOT_POPULATION_SIZE,
                              random_state=SEED,  cv=CV, use_dask=use_dask,
                              verbosity=2, memory="auto")
-    df = get_train_df("elo/data/merged_train.csv")
-    print(df.head(1))
-    # TODO: Drop these categorical for now, will transform them later.
-    to_drop_cols = ["first_active_month", "authorized_flag", "category_1_transactions",
-                    "category_3", "merchant_id", "purchase_date", "category_1_merchants",
-                    "most_recent_sales_range", "most_recent_purchases_range", "category_4"]
-    # TODO: the "mean" aggregation isn't probably the best option for all the columns.
-    df = (df.drop(to_drop_cols, axis=1)
-            .groupby("card_id")
-            .mean()
-            .reset_index())
+    df = pd.read_csv("elo/data/augmented_train.csv")
+    print(df.sample(5))
     # TODO: Find a better way to impute inf and missing values.
     df = df.replace([np.inf, -np.inf], np.nan)
     df = df.fillna(df.median())
-    print(df.shape)
     X = df.drop(["card_id", "target"], axis=1)
     y = df.loc[:, "target"]
 
@@ -101,8 +91,9 @@ def tpot(use_dask):
             tpot_reg.fit(X, y)
     else:
         tpot_reg.fit(X, y)
-    export_path = str(Path('elo/data/tpot_more_generations.py').absolute())
+    export_path = str(Path('elo/data/tpot_few_generations_augmented_dataset.py').absolute())
     tpot_reg.export(export_path)
+    return tpot_reg
 
 
 def best_tpot_few_generations():
@@ -155,19 +146,10 @@ def lightGBM():
 
 
 def make_submission(model, model_name):
-    df = get_test_df("elo/data/merged_test.csv")
-    to_drop_cols = ["first_active_month", "authorized_flag", "category_1_transactions",
-                    "category_3", "merchant_id", "purchase_date", "category_1_merchants",
-                    "most_recent_sales_range", "most_recent_purchases_range", "category_4"]
-    # TODO: the "mean" aggregation isn't probably the best option for all the columns.
-    df = (df.drop(to_drop_cols, axis=1)
-            .groupby("card_id")
-            .mean()
-            .reset_index())
+    df = pd.read_csv("elo/data/augmented_test.csv")
     # TODO: Find a better way to impute inf and missing values.
     df = df.replace([np.inf, -np.inf], np.nan)
     df = df.fillna(df.median())
-    print(df.shape)
     X = df.drop(["card_id"], axis=1)
     df["target"] = model.predict(X)
     (df.loc[:, ["card_id", "target"]]
@@ -175,5 +157,5 @@ def make_submission(model, model_name):
 
 
 if __name__ == "__main__":
-    model = best_tpot_few_generations()
-    make_submission(model, "tpot_few_generations")
+    model = tpot()
+    make_submission(model, "tpot_few_generations_augmented_dataset")

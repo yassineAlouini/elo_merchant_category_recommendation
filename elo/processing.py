@@ -429,13 +429,15 @@ def additional_features(df):
 
 def generate_augmented_train_test(debug=False):
     """ Generate train and test augmented datasets. """
-    num_rows = 10000 if debug else None
+    num_rows = 100 if debug else None
     with timer("train & test"):
-        df = train_test(num_rows)
+        df = train_test(num_rows).reset_index()
     with timer("historical transactions"):
-        df = pd.merge(df, historical_transactions(num_rows), on='card_id', how='outer')
+        historical_transactions_df = historical_transactions(num_rows).reset_index()
+        df = pd.merge(df, historical_transactions_df, on='card_id', how='outer')
     with timer("new merchants"):
-        df = pd.merge(df, new_merchant_transactions(num_rows), on='card_id', how='outer')
+        new_merchants_transactions_df = new_merchant_transactions(num_rows).reset_index()
+        df = pd.merge(df, new_merchants_transactions_df, on='card_id', how='outer')
     with timer("additional features"):
         df = additional_features(df)
     with timer("split train & test"):
@@ -445,8 +447,8 @@ def generate_augmented_train_test(debug=False):
         del df
         gc.collect()
     with timer("Save train and test files"):
-        train_df.to_csv('elo/data/augmented_train_df.csv')
-        test_df.to_csv('ele/data/augmented_test_df.csv')
+        train_df.to_csv('elo/data/augmented_train.csv', index=False)
+        test_df.to_csv('elo/data/augmented_test.csv', index=False)
 
 # TODO: Refactor the train and test functions (very similar).
 
