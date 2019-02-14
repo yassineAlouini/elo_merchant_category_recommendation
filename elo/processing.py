@@ -13,19 +13,20 @@ from pandas.core.common import SettingWithCopyWarning
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import KFold, StratifiedKFold
 
+from elo.conf import OUTLIER_THRESHOLD
+
 warnings.simplefilter(action='ignore', category=SettingWithCopyWarning)
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-FEATS_EXCLUDED = ['first_active_month', 'target', 'card_id', 'outliers',
-                  'hist_purchase_date_max', 'hist_purchase_date_min', 'hist_card_id_size',
-                  'new_purchase_date_max', 'new_purchase_date_min', 'new_card_id_size',
-                  'OOF_PRED', 'month_0']
-OUTLIER_THRESHOLD = -30
 # Data processing heavily "inspired" (i.e. copied) from here:
 # https://www.kaggle.com/mfjwr1/simple-lightgbm-without-blending/comments#461819
 
 # Merge on card_id: train/test and historical_transactions
 # Merge on merchant_id: train/test and merchants
+
+
+def rmse(y_hat, y):
+    return mean_squared_error(y_hat, y) ** 0.5
 
 
 @contextmanager
